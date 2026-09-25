@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="家計簿">
 <meta name="theme-color" content="#FFFFFF">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -28,7 +30,7 @@
   --text:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
-html{color-scheme:light}
+html,:root{color-scheme:light only}
 body{margin:0}
 [hidden]{display:none!important}
 button,a{touch-action:manipulation;-webkit-user-select:none;user-select:none}
@@ -1025,7 +1027,15 @@ else {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.api && S.ready) refresh(); });
 window.addEventListener('online', () => { if (S.api) refresh(); });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator){
+  // 新しいバージョンが入ったら一度だけ読み込み直す
+  let reloaded = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !S.sheet){ reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
 })();
 </script>
 </body>
