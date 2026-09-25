@@ -924,7 +924,11 @@ document.addEventListener('click', async e => {
       const input = document.getElementById('setup-url'); const url = (input.value || '').trim(); const err = document.getElementById('setup-err');
       if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)){ err.textContent = '「https://script.google.com/macros/s/…/exec」の形のURLを貼り付けてください'; break; }
       el.disabled = true; el.textContent = '接続しています…'; err.textContent = '';
-      try { await api({action:'load'}, url); lsSet('kakeibo.api', url); S.api = url; $app.innerHTML = '<div class="loading">読み込み中…</div>'; await refresh(); }
+      try {
+        const j = await api({action:'load'}, url); lsSet('kakeibo.api', url); S.api = url;
+        S.config = j.config || structuredClone(DEFAULT_CONFIG); setTransactions(j.transactions || []);
+        S.lastSync = new Date(); saveCache(); S.ready = true; render(); runRecurring();
+      }
       catch (e){ console.error(e); err.textContent = '接続できませんでした。URLと、デプロイ設定の「アクセスできるユーザー：全員」を確認してください。'; el.disabled = false; el.textContent = '接続する'; }
       break;
     }
