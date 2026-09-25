@@ -8,8 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<meta name="theme-color" content="#F6F7F6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#101312" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -18,37 +17,15 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Outfit:wght@300;400;500;600&display=swap">
 <style>
 :root{
-  --bg:#F6F7F6; --surface:#FFFFFF; --surface2:#F3F5F4; --line:#E6E9E7; --line2:#F0F2F1;
-  --ink:#141A18; --muted:#8C9591; --faint:#B4BCB8;
-  --accent:#2F7D6D; --accent-soft:#E6F1EE; --on-accent:#FFFFFF;
-  --inc:#2F7D6D; --exp:#C0504A; --warn:#C9913D; --warn-soft:#F7EFE2;
-  --good-soft:#E6F1EE; --bad-soft:#F6E6E4; --info-soft:#EBEEF5; --info:#6272A4;
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface2:#F5F7F6; --line:#E6EAE8; --line2:#F0F3F1;
+  --ink:#1D2926; --muted:#7A8883; --faint:#AEB9B5;
+  --accent:#3E8C7B; --accent-soft:#E2F0EC; --on-accent:#FFFFFF;
+  --inc:#1C9A67; --exp:#D9534F; --warn:#E08E0B; --warn-soft:#FDF1DC;
+  --good-soft:#E3F4EC; --bad-soft:#FBE7E6; --info-soft:#E8EEF8; --info:#4F6BED;
   --shadow:none;
   --scrim:rgba(20,28,26,.38);
   --num:"Outfit","Zen Kaku Gothic New",system-ui,sans-serif;
   --text:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
-}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    color-scheme:dark;
-    --bg:#101312; --surface:#171B1A; --surface2:#1D2220; --line:#272D2B; --line2:#212624;
-    --ink:#E8ECEA; --muted:#8E9894; --faint:#5A6460;
-    --accent:#5DB3A0; --accent-soft:#1C302B; --on-accent:#0C1110;
-    --inc:#5DB3A0; --exp:#E0827C; --warn:#D9A95E; --warn-soft:#2E271B;
-    --good-soft:#1C302B; --bad-soft:#342121; --info-soft:#1F2433; --info:#9AA8D6;
-    --shadow:none;
-    --scrim:rgba(0,0,0,.55);
-  }
-}
-:root[data-theme="dark"]{
-  color-scheme:dark;
-  --bg:#101312; --surface:#171B1A; --surface2:#1D2220; --line:#272D2B; --line2:#212624;
-  --ink:#E8ECEA; --muted:#8E9894; --faint:#5A6460;
-  --accent:#5DB3A0; --accent-soft:#1C302B; --on-accent:#0C1110;
-  --inc:#5DB3A0; --exp:#E0827C; --warn:#D9A95E; --warn-soft:#2E271B;
-  --good-soft:#1C302B; --bad-soft:#342121; --info-soft:#1F2433; --info:#9AA8D6;
-  --shadow:none;
-  --scrim:rgba(0,0,0,.55);
 }
 *{box-sizing:border-box}
 html{color-scheme:light}
@@ -86,7 +63,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .hero{padding:4px 2px 6px}
 .hero .cap{font-size:12px;color:var(--muted)}
 .hero .big{font-family:var(--num);font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1.1;margin:0 0 6px;color:var(--ink)}
-.hero .big.neg{color:var(--exp)}
+.hero .big.neg{color:var(--exp)} .hero .big.pos{color:var(--inc)}
 .split{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .split .v{font-family:var(--num);font-weight:400;color:var(--ink);margin-left:4px}
 .vs{font-size:12px;color:var(--muted);margin-top:8px}
@@ -153,7 +130,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .cal .cell.blank{background:none}
 .cal .cell .dn{font-size:12px;font-weight:700;font-family:var(--num)}
 .cal .cell .ex{font-size:10px;font-family:var(--num);color:var(--ink);font-weight:500;line-height:1.1;white-space:nowrap}
-.cal .cell .in{width:5px;height:5px;border-radius:50%;background:var(--warn)}
+.cal .cell .in{width:5px;height:5px;border-radius:50%;background:var(--inc)}
 .cal .cell.today .dn{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .cal .cell[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:-2px}
 .calleg{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:10px;align-items:center;flex-wrap:wrap}
@@ -205,7 +182,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .goal .top button{font-weight:500;text-align:left}
 .goal .meta{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);gap:8px}
 .goal .dep{font-size:12.5px;font-weight:700;color:var(--accent);border:1.5px solid var(--accent);border-radius:99px;padding:3px 10px;white-space:nowrap}
-.goal .bar > i{background:var(--accent)}
+.goal .bar > i{background:var(--info)}
 .goal.done .bar > i{background:var(--inc)}
 
 .ytable{display:flex;flex-direction:column}
@@ -269,7 +246,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:13.5px;font-weight:700;z-index:60;max-width:calc(100% - 32px);text-align:center}
 .loading{padding:60px 0;text-align:center;color:var(--muted)}
-.tx .a.neg{color:var(--ink)} .tx .a.pos{color:var(--accent)}
+.tx .a.neg{color:var(--exp)} .tx .a.pos{color:var(--inc)}
 .donut .center b{font-weight:400}
 .syncpill{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:30;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);border-radius:99px;padding:5px 12px;white-space:nowrap}
 .setup{max-width:420px;margin:0 auto;padding-top:12vh;display:flex;flex-direction:column;gap:14px}
@@ -291,16 +268,16 @@ button{cursor:pointer;background:none;border:0;padding:0}
 
 <script>
 (() => {
-const COLORS = ['#2F7D6D','#C9913D','#7D8BB5','#B97A8A','#C4704F','#8A6FB0','#5E9BB8','#6FA07A','#A89A5B','#8C7B6B','#6B7F8C','#D19C8E'];
+const COLORS = ['#F29D12','#E4572E','#D6457A','#9B5DE5','#4F6BED','#2A9DF4','#17A398','#3E8C7B','#7CB342','#C9A400','#8D6E63','#78909C'];
 const GROUPS = {variable:'変動費', fixed:'固定費', special:'特別費'};
-const GROUP_COLORS = {variable:'#C9913D', fixed:'#7D8BB5', special:'#B97A8A'};
+const GROUP_COLORS = {variable:'#F29D12', fixed:'#4F6BED', special:'#D6457A'};
 const DEFAULT_CONFIG = {
   totalBudget: 60000, recurring: [], goals: [],
   categories: [
-    {id:'food', name:'食費', type:'expense', group:'variable', color:'#2F7D6D', budget:40000},
-    {id:'conbini', name:'コンビニ', type:'expense', group:'variable', color:'#B97A8A', budget:10000},
-    {id:'subsc', name:'サブスク', type:'expense', group:'fixed', color:'#7D8BB5', budget:0},
-    {id:'salary', name:'給与', type:'income', color:'#2F7D6D', budget:0},
+    {id:'food', name:'食費', type:'expense', group:'variable', color:'#F29D12', budget:40000},
+    {id:'conbini', name:'コンビニ', type:'expense', group:'variable', color:'#D6457A', budget:10000},
+    {id:'subsc', name:'サブスク', type:'expense', group:'fixed', color:'#4F6BED', budget:0},
+    {id:'salary', name:'給与', type:'income', color:'#3E8C7B', budget:0},
   ]
 };
 
@@ -605,7 +582,7 @@ function viewHome(){
   return `${monthNav()}<div class="stack">
     <section class="hero">
       <div class="cap">${S.ym === curYm() ? '今月' : ymLabel(S.ym)}の収支</div>
-      <div class="big ${s.bal >= 0 ? '' : 'neg'}">${signed(s.bal)}</div>
+      <div class="big ${s.bal >= 0 ? 'pos' : 'neg'}">${signed(s.bal)}</div>
       <div class="split"><span>収入<span class="v">${s.inc.toLocaleString('ja-JP')}</span></span><span>支出<span class="v">${s.exp.toLocaleString('ja-JP')}</span></span></div>
       ${pp.list.length && s.exp ? `<div class="vs">支出は${pp.partial ? '先月の同じ時期' : '先月'}より <b class="num" style="font-weight:500;color:${dexp > 0 ? 'var(--exp)' : 'var(--accent)'}">${dexp > 0 ? yen(dexp) + ' 多い' : dexp < 0 ? yen(dexp) + ' 少ない' : '同じ'}</b></div>` : ''}
     </section>
@@ -639,7 +616,7 @@ function calendar(){
   for (let d = 1; d <= dim; d++){
     const e = byDay[d] || {exp:0, inc:0}; const date = `${S.ym}-${pad(d)}`;
     const k = e.exp && max ? 12 + Math.sqrt(e.exp / max) * 48 : 0;
-    const bg = k ? `background:color-mix(in srgb, var(--accent) ${k.toFixed(0)}%, var(--surface2))` : '';
+    const bg = k ? `background:color-mix(in srgb, var(--exp) ${k.toFixed(0)}%, var(--surface2))` : '';
     const strong = k > 38;
     const exTxt = e.exp ? (e.exp >= 10000 ? (e.exp/10000).toFixed(e.exp >= 100000 ? 0 : 1) + '万' : e.exp.toLocaleString('ja-JP')) : '';
     cells += `<button class="cell ${date === today ? 'today' : ''}" style="${bg}" data-action="calday" data-d="${d}" aria-pressed="${S.calDay === d}" aria-label="${d}日 支出${e.exp}円">
@@ -652,7 +629,7 @@ function calendar(){
   const noSpend = Array.from({length: S.ym === curYm() ? Number(today.slice(8)) : S.ym < curYm() ? dim : 0}, (_,i) => i+1).filter(d => !(byDay[d]?.exp)).length;
   return `<section class="card">
       <div class="cal">${cells}</div>
-      <div class="calleg"><span><i style="background:color-mix(in srgb, var(--accent) 20%, var(--surface2))"></i>少ない</span><span><i style="background:color-mix(in srgb, var(--accent) 60%, var(--surface2))"></i>多い</span><span><span class="dot" style="width:6px;height:6px;background:var(--warn);margin-right:4px"></span>収入あり</span>
+      <div class="calleg"><span><i style="background:color-mix(in srgb, var(--exp) 20%, var(--surface2))"></i>少ない</span><span><i style="background:color-mix(in srgb, var(--exp) 60%, var(--surface2))"></i>多い</span><span><span class="dot" style="width:6px;height:6px;background:var(--inc);margin-right:4px"></span>収入あり</span>
       ${noSpend ? `<span style="margin-left:auto">支出ゼロの日 <b class="num" style="color:var(--inc)">${noSpend}日</b></span>` : ''}</div>
     </section>
     ${S.calDay ? (sel.length ? dayGroups(sel) : `<div class="card" style="margin-top:14px"><div class="empty">${Number(S.ym.slice(5))}月${S.calDay}日の記録はありません</div></div>`) : `<p class="note" style="text-align:center;margin-top:12px">日付をタップすると、その日の取引が表示されます</p>`}`;
@@ -737,7 +714,7 @@ function viewReport(){
   return `${seg}
     <div class="monthnav"><div class="label"><b>${y}年</b>YEAR</div><div class="navs"><button class="iconbtn" data-action="year" data-k="-1" aria-label="前の年">${ICON.left}</button><button class="iconbtn" data-action="year" data-k="1" aria-label="次の年">${ICON.right}</button></div></div>
     <div class="stack">
-      <section class="hero"><div class="cap">年間収支</div><div class="big ${inc-exp >= 0 ? '' : 'neg'}">${signed(inc-exp)}</div>
+      <section class="hero"><div class="cap">年間収支</div><div class="big ${inc-exp >= 0 ? 'pos' : 'neg'}">${signed(inc-exp)}</div>
         <div class="split"><span>収入<span class="v">${inc.toLocaleString('ja-JP')}</span></span><span>支出<span class="v">${exp.toLocaleString('ja-JP')}</span></span></div></section>
       <section class="card"><h2>月平均${withData ? `（記録のある${withData}か月）` : ''}</h2>
         <div class="kv2"><div><small>収入</small><b class="num pos">${yen(withData ? inc/withData : 0)}</b></div><div><small>支出</small><b class="num neg">${yen(withData ? exp/withData : 0)}</b></div></div>
