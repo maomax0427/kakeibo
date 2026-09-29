@@ -67,7 +67,20 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .hero .big{font-family:var(--num);font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1.1;margin:0 0 6px;color:var(--ink)}
 .hero .big.neg{color:var(--exp)} .hero .big.pos{color:var(--inc)}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.split > div{background:var(--surface2);border-radius:12px;padding:10px 14px}
+.split > div,.split > button{background:var(--surface2);border-radius:12px;padding:10px 14px;text-align:left;width:100%}
+.split > button:active{background:var(--line)}
+.split .l{display:flex;justify-content:space-between;align-items:center}
+.split .l i{font-style:normal;font-size:11.5px;color:var(--faint)}
+.bdrow{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 2px;border-top:1px solid var(--line2);width:100%;text-align:left}
+.bdrow:first-child{border-top:0}
+.bdrow .nm{font-weight:500}
+.bdrow .nm small{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.bdrow .amt{font-family:var(--num);font-size:15px;text-align:right}
+.bdrow .amt small{display:block;font-size:11.5px;color:var(--muted)}
+.bdrow .bar{display:block;grid-column:2 / 4;height:4px;margin-top:2px}
+.bdtotal{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 12px}
+.bdtotal b{font-family:var(--num);font-size:30px;font-weight:400}
+.bdsec{font-size:12px;color:var(--muted);font-weight:500;margin:18px 2px 4px;letter-spacing:.04em}
 .split .l{font-size:12px;color:var(--muted)}
 .split .v{display:block;font-family:var(--num);font-size:24px;font-weight:400;line-height:1.3;letter-spacing:-.01em}
 .vs{font-size:12px;color:var(--muted);margin-top:8px}
@@ -600,7 +613,7 @@ function viewHome(){
     <section class="hero">
       <div class="cap">${S.ym === curYm() ? '今月' : ymLabel(S.ym)}の収支</div>
       <div class="big ${s.bal >= 0 ? 'pos' : 'neg'}">${signed(s.bal)}</div>
-      <div class="split"><div><span class="l">収入</span><span class="v pos">${yen(s.inc)}</span></div><div><span class="l">支出</span><span class="v neg">${yen(s.exp)}</span></div></div>
+      <div class="split"><button data-action="breakdown" data-type="income"><span class="l">収入<i>内訳 ›</i></span><span class="v pos">${yen(s.inc)}</span></button><button data-action="breakdown" data-type="expense"><span class="l">支出<i>内訳 ›</i></span><span class="v neg">${yen(s.exp)}</span></button></div>
       ${pp.list.length && s.exp ? `<div class="vs">支出は${pp.partial ? '先月の同じ時期' : '先月'}より <b class="num" style="font-weight:500;color:${dexp > 0 ? 'var(--exp)' : 'var(--accent)'}">${dexp > 0 ? yen(dexp) + ' 多い' : dexp < 0 ? yen(dexp) + ' 少ない' : '同じ'}</b></div>` : ''}
     </section>
     <section class="card"><h2>何に使った？</h2>${donut(expCats, s.exp, '支出合計', true, 'home')}</section>
@@ -855,6 +868,30 @@ function renderSheet(focus){
       `<div class="field"><label for="g-deadline">いつまでに（任意）</label><input id="g-deadline" class="textin" type="month" value="${esc(sh.deadline)}"></div>` +
       amountField('g-saved', 'いま貯まっている金額', sh.saved) +
       `<div class="err">${esc(sh.err)}</div>` + actions(sh.isNew, 'delgoal', 'savegoal');
+  } else if (sh.kind === 'breakdown'){
+    const isInc = sh.type === 'income';
+    const list = sortTx(items(sh.ym).filter(t => t.type === sh.type));
+    const total = list.reduce((a,t) => a + t.amount, 0);
+    const by = {};
+    for (const t of list){ const e = by[t.categoryId] ||= {v:0, n:0}; e.v += t.amount; e.n++; }
+    const rows = Object.entries(by).sort((a,b) => b[1].v - a[1].v);
+    const max = rows.length ? rows[0][1].v : 1;
+    let groups = '';
+    if (!isInc && total){
+      const g = summary(list).byGroup;
+      groups = `<div class="bdsec">固定費・変動費・特別費</div>
+        <div class="groupbar">${Object.keys(GROUPS).filter(k => g[k]).map(k => `<i style="width:${g[k]/total*100}%;background:${GROUP_COLORS[k]}"></i>`).join('')}</div>
+        <div class="grouplist">${Object.keys(GROUPS).map(k => `<div><span class="dot" style="background:${GROUP_COLORS[k]}"></span><span>${GROUPS[k]}</span><span class="num">${yen(g[k]||0)}</span><span class="pc num">${Math.round((g[k]||0)/total*100)}%</span></div>`).join('')}</div>`;
+    }
+    html = head(`${ymLabel(sh.ym)}の${isInc ? '収入' : '支出'}`) +
+      `<div class="bdtotal"><span class="note" style="margin:0">${list.length}件</span><b class="${isInc ? 'pos' : 'neg'}">${yen(total)}</b></div>` +
+      (rows.length ? `<div class="bdsec">カテゴリ別</div><div>${rows.map(([id, e]) => `<button class="bdrow" data-action="bdcat" data-id="${esc(id)}">
+          <span class="dot" style="background:${cat(id).color}"></span>
+          <span class="nm">${esc(cat(id).name)}<small class="num">${e.n}件</small></span>
+          <span class="amt">${yen(e.v)}<small>${Math.round(e.v/total*100)}%</small></span>
+          <span class="bar"><i style="width:${e.v/max*100}%;background:${cat(id).color}"></i></span></button>`).join('')}</div>` + groups +
+        `<div class="bdsec">すべての${isInc ? '収入' : '支出'}</div><div class="txlist">${list.map(txRow).join('')}</div>`
+      : `<div class="empty">この月の${isInc ? '収入' : '支出'}はまだありません</div>`);
   } else if (sh.kind === 'deposit'){
     const g = goals().find(x => x.id === sh.id); const bal = summary(items(curYm())).bal;
     html = head(`「${esc(g?.name)}」に積み立て`) + amountField('d-amount', '積み立てる金額', sh.amount) +
@@ -1004,6 +1041,8 @@ document.addEventListener('click', async e => {
       closeSheet(); await saveConfig({...cfg(), goals: goals().filter(g => g.id !== sh.id)}); render(); toast('削除しました'); break;
     }
     case 'deposit': openSheet({kind:'deposit', id: el.dataset.id, amount:''}); break;
+    case 'breakdown': openSheet({kind:'breakdown', type: el.dataset.type, ym: S.ym}); break;
+    case 'bdcat': closeSheet(); S.filterCat = el.dataset.id; S.view = 'list'; S.listMode = 'list'; render(); window.scrollTo(0,0); break;
     case 'fillbal': sh.amount = String(summary(items(curYm())).bal); renderSheet(); break;
     case 'savedeposit': {
       const amt = Number(sh.amount); if (!amt) return fail('金額を入力してください');
