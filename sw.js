@@ -1,6 +1,6 @@
 // アプリ本体をキャッシュして、電波がなくても起動できるようにする。
 // データ（script.google.com）はキャッシュしない。
-const CACHE = 'kakeibo-v4';
+const CACHE = 'kakeibo-v5';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {

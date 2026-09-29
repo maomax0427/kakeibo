@@ -66,8 +66,10 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .hero .cap{font-size:12px;color:var(--muted)}
 .hero .big{font-family:var(--num);font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1.1;margin:0 0 6px;color:var(--ink)}
 .hero .big.neg{color:var(--exp)} .hero .big.pos{color:var(--inc)}
-.split{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-.split .v{font-family:var(--num);font-weight:400;color:var(--ink);margin-left:4px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.split > div{background:var(--surface2);border-radius:12px;padding:10px 14px}
+.split .l{font-size:12px;color:var(--muted)}
+.split .v{display:block;font-family:var(--num);font-size:24px;font-weight:400;line-height:1.3;letter-spacing:-.01em}
 .vs{font-size:12px;color:var(--muted);margin-top:8px}
 .pos{color:var(--inc)} .neg{color:var(--exp)}
 
@@ -83,19 +85,24 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .rest{font-weight:500;font-size:13px;font-family:var(--num)}
 .rest.ok{color:var(--accent)} .rest.warn{color:var(--warn)} .rest.over{color:var(--exp)}
 
-.donutwrap{display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:center}
-@media (max-width:380px){.donutwrap{grid-template-columns:1fr}.donut{margin:0 auto}}
-.donut{position:relative;width:150px;height:150px}
+.donutwrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.donut{position:relative;width:min(230px,70vw);aspect-ratio:1;max-width:100%}
 .donut svg{width:100%;height:100%;transform:rotate(-90deg)}
 .donut .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.donut .center small{font-size:11px;color:var(--muted)}
-.donut .center b{font-size:17px;font-weight:600}
-.legend{display:flex;flex-direction:column;gap:2px;min-width:0}
-.legend button{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;text-align:left;padding:5px 6px;border-radius:8px;font-size:13.5px}
+.donut .center small{font-size:12px;color:var(--muted)}
+.donut .center b{font-size:24px;font-weight:600}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;width:100%;min-width:0}
+.legend button{display:grid;grid-template-columns:10px minmax(0,1fr);grid-template-rows:auto auto;column-gap:8px;align-items:center;text-align:left;padding:6px 8px;border-radius:10px;font-size:13.5px}
+.legend button .dot{grid-row:1}
+.legend button .val{grid-column:2}
+.legend.all{grid-template-columns:1fr}
+.legend.all button{grid-template-columns:10px minmax(0,1fr) auto;grid-template-rows:auto}
+.legend.all button .val{grid-column:auto}
+.morelink{font-size:12.5px;color:var(--accent);font-weight:500;padding:4px 8px}
 .legend button:hover{background:var(--surface2)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
 .legend .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.legend .amt{font-size:13px}
+.legend .amt{font-size:14px}
 .legend .pc{color:var(--muted);font-size:11.5px;margin-left:4px}
 .empty{color:var(--faint);font-size:13.5px;text-align:center;padding:18px 0}
 
@@ -313,7 +320,7 @@ const S = {
   config:null, months:{},
   view:'home', ym:curYm(), year:Number(todayStr().slice(0,4)),
   reportMode:'month', listMode:'list', calDay:null, filterCat:null,
-  sheet:null, confirmDel:false, confirmDisconnect:false,
+  sheet:null, confirmDel:false, confirmDisconnect:false, allCats:null,
 };
 
 const $app = document.getElementById('app');
@@ -508,24 +515,32 @@ function monthNav(){
     <button class="iconbtn" data-action="ym" data-k="1" aria-label="次の月">${ICON.right}</button></div>
   </div>`;
 }
-function donut(byCat, total, label, clickable){
+function donut(byCat, total, label, clickable, key){
   const rows = Object.entries(byCat).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
   if (!total || !rows.length) return `<div class="empty">まだデータがありません</div>`;
-  let acc = 0; const gap = rows.length > 1 ? 0.6 : 0;
-  const segs = rows.map(([id,v]) => {
-    const p = v / total * 100; const len = Math.max(p - gap, 0.2);
-    const s = `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${cat(id).color}" stroke-width="4.6" stroke-dasharray="${len} ${100-len}" stroke-dashoffset="${-acc}"/>`;
+  // 上位4つ＋その他にまとめて、細かい内訳は必要なときだけ
+  const TOP = 4;
+  const main = rows.length > TOP + 1 ? rows.slice(0, TOP) : rows;
+  const restV = rows.slice(main.length).reduce((a, [,v]) => a + v, 0);
+  const segsData = [...main.map(([id,v]) => ({id, v, color:cat(id).color, name:cat(id).name})), ...(restV ? [{id:null, v:restV, color:'#B8C2BE', name:'その他'}] : [])];
+  let acc = 0; const gap = segsData.length > 1 ? 0.6 : 0;
+  const segs = segsData.map(d => {
+    const p = d.v / total * 100; const len = Math.max(p - gap, 0.2);
+    const s = `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${d.color}" stroke-width="4.6" stroke-dasharray="${len} ${100-len}" stroke-dashoffset="${-acc}"/>`;
     acc += p; return s;
   }).join('');
-  const legend = rows.map(([id,v]) => `<button ${clickable ? `data-action="filtercat" data-id="${esc(id)}"` : 'tabindex="-1" style="cursor:default"'}>
-      <span class="dot" style="background:${cat(id).color}"></span>
-      <span class="nm">${esc(cat(id).name)}</span>
-      <span><span class="amt num">${yen(v)}</span><span class="pc num">${Math.round(v/total*100)}%</span></span>
-    </button>`).join('');
+  const item = d => `<button ${clickable && d.id ? `data-action="filtercat" data-id="${esc(d.id)}"` : d.id ? 'tabindex="-1" style="cursor:default"' : `data-action="allcats" data-key="${key}"`}>
+      <span class="dot" style="background:${d.color}"></span>
+      <span class="nm">${esc(d.name)}</span>
+      <span class="val"><span class="amt num">${yen(d.v)}</span><span class="pc num">${Math.round(d.v/total*100)}%</span></span>
+    </button>`;
+  const open = S.allCats === key;
+  const all = rows.map(([id,v]) => item({id, v, color:cat(id).color, name:cat(id).name})).join('');
   return `<div class="donutwrap">
     <div class="donut"><svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--line2)" stroke-width="4.6"/>${segs}</svg>
       <div class="center"><small>${label}</small><b class="num">${yen(total)}</b></div></div>
-    <div class="legend">${legend}</div></div>`;
+    ${open ? `<div class="legend all">${all}</div>` : `<div class="legend">${segsData.map(item).join('')}</div>`}
+    ${rows.length > main.length || open ? `<button class="morelink" data-action="allcats" data-key="${key}">${open ? '閉じる' : `内訳をすべて見る（${rows.length}カテゴリ）`}</button>` : ''}</div>`;
 }
 function budgetRow(name, budget, spent){
   const r = budget ? spent / budget : 0;
@@ -585,10 +600,10 @@ function viewHome(){
     <section class="hero">
       <div class="cap">${S.ym === curYm() ? '今月' : ymLabel(S.ym)}の収支</div>
       <div class="big ${s.bal >= 0 ? 'pos' : 'neg'}">${signed(s.bal)}</div>
-      <div class="split"><span>収入<span class="v">${s.inc.toLocaleString('ja-JP')}</span></span><span>支出<span class="v">${s.exp.toLocaleString('ja-JP')}</span></span></div>
+      <div class="split"><div><span class="l">収入</span><span class="v pos">${yen(s.inc)}</span></div><div><span class="l">支出</span><span class="v neg">${yen(s.exp)}</span></div></div>
       ${pp.list.length && s.exp ? `<div class="vs">支出は${pp.partial ? '先月の同じ時期' : '先月'}より <b class="num" style="font-weight:500;color:${dexp > 0 ? 'var(--exp)' : 'var(--accent)'}">${dexp > 0 ? yen(dexp) + ' 多い' : dexp < 0 ? yen(dexp) + ' 少ない' : '同じ'}</b></div>` : ''}
     </section>
-    <section class="card"><h2>何に使った？</h2>${donut(expCats, s.exp, '支出合計', true)}</section>
+    <section class="card"><h2>何に使った？</h2>${donut(expCats, s.exp, '支出合計', true, 'home')}</section>
     ${budgetCard}
     ${goalCard()}
     <section class="card">
@@ -691,14 +706,14 @@ function viewReport(){
     const groups = Object.entries(s.byGroup).filter(([,v]) => v > 0);
     return `${seg}${monthNav()}<div class="stack">
       ${insightCard(S.ym)}
-      <section class="card"><h2>支出の内訳</h2>${donut(exp, s.exp, '支出', true)}</section>
+      <section class="card"><h2>支出の内訳</h2>${donut(exp, s.exp, '支出', true, 'rexp')}</section>
       ${compareCard(S.ym)}
       ${memoCard(list, 'お店・メモ別の支出')}
       <section class="card"><h2>固定費・変動費・特別費</h2>
         ${gTotal ? `<div class="groupbar">${groups.map(([g,v]) => `<i style="width:${v/gTotal*100}%;background:${GROUP_COLORS[g]}"></i>`).join('')}</div>
         <div class="grouplist">${Object.keys(GROUPS).map(g => `<div><span class="dot" style="background:${GROUP_COLORS[g]}"></span><span>${GROUPS[g]}</span><span class="num">${yen(s.byGroup[g]||0)}</span><span class="pc num">${gTotal ? Math.round((s.byGroup[g]||0)/gTotal*100) : 0}%</span></div>`).join('')}</div>` : `<div class="empty">まだデータがありません</div>`}
       </section>
-      <section class="card"><h2>収入の内訳</h2>${donut(inc, s.inc, '収入', false)}</section>
+      <section class="card"><h2>収入の内訳</h2>${donut(inc, s.inc, '収入', false, 'rinc')}</section>
     </div>`;
   }
   const y = S.year; let inc = 0, exp = 0, withData = 0; const byCat = {}; const rows = []; const all = [];
@@ -717,12 +732,12 @@ function viewReport(){
     <div class="monthnav"><div class="label"><b>${y}年</b>YEAR</div><div class="navs"><button class="iconbtn" data-action="year" data-k="-1" aria-label="前の年">${ICON.left}</button><button class="iconbtn" data-action="year" data-k="1" aria-label="次の年">${ICON.right}</button></div></div>
     <div class="stack">
       <section class="hero"><div class="cap">年間収支</div><div class="big ${inc-exp >= 0 ? 'pos' : 'neg'}">${signed(inc-exp)}</div>
-        <div class="split"><span>収入<span class="v">${inc.toLocaleString('ja-JP')}</span></span><span>支出<span class="v">${exp.toLocaleString('ja-JP')}</span></span></div></section>
+        <div class="split"><div><span class="l">収入</span><span class="v pos">${yen(inc)}</span></div><div><span class="l">支出</span><span class="v neg">${yen(exp)}</span></div></div></section>
       <section class="card"><h2>月平均${withData ? `（記録のある${withData}か月）` : ''}</h2>
         <div class="kv2"><div><small>収入</small><b class="num pos">${yen(withData ? inc/withData : 0)}</b></div><div><small>支出</small><b class="num neg">${yen(withData ? exp/withData : 0)}</b></div></div>
         ${best && withData > 1 ? `<div class="kv2" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><div><small>いちばん良かった月</small><b class="num">${best.m}月</b><div class="num ${best.bal >= 0 ? 'pos' : 'neg'}" style="font-size:13px">${signed(best.bal)}</div></div><div><small>いちばん厳しかった月</small><b class="num">${worst.m}月</b><div class="num ${worst.bal >= 0 ? 'pos' : 'neg'}" style="font-size:13px">${signed(worst.bal)}</div></div></div>` : ''}
       </section>
-      <section class="card"><h2>年間の支出内訳</h2>${donut(byCat, exp, '年間支出', false)}</section>
+      <section class="card"><h2>年間の支出内訳</h2>${donut(byCat, exp, '年間支出', false, 'year')}</section>
       ${memoCard(all, '年間のお店・メモ別の支出')}
       <section class="card"><h2>月別収支</h2>
         <div class="yrow yhead"><span class="m">月</span><span>収入</span><span>支出</span><span>収支</span></div>
@@ -894,6 +909,7 @@ document.addEventListener('click', async e => {
     case 'gomonth': S.ym = el.dataset.ym; S.reportMode = 'month'; render(); window.scrollTo(0,0); break;
     case 'filtercat': S.filterCat = el.dataset.id; S.view = 'list'; S.listMode = 'list'; render(); window.scrollTo(0,0); break;
     case 'clearfilter': S.filterCat = null; render(); break;
+    case 'allcats': S.allCats = S.allCats === el.dataset.key ? null : el.dataset.key; render(); break;
     case 'sync': S.confirmDisconnect = false; toast('同期しています…'); await refresh(); if (!S.offline) toast('同期しました'); else toast('同期できませんでした'); render(); break;
     case 'disconnect':
       if (!S.confirmDisconnect){ S.confirmDisconnect = true; render(); break; }
