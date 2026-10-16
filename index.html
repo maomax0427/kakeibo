@@ -80,10 +80,6 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .bdrow .bar{display:block;grid-column:2 / 4;height:4px;margin-top:2px}
 .bdtotal{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 12px}
 .bdtotal b{font-family:var(--num);font-size:30px;font-weight:400}
-.shiftcard .sc-top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:6px}
-.shiftcard .sc-top .l{font-size:12px;color:var(--muted)}
-.shiftcard .sc-top .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2;color:var(--inc)}
-.shiftcard .sc-sub{font-size:12px;color:var(--muted);text-align:right;line-height:1.6}
 .payrow{display:grid;grid-template-columns:40px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line2);font-size:14px}
 .payrow .d{color:var(--muted);font-size:13px}
 .payrow .w{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;font-weight:700}
@@ -99,7 +95,8 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .sc-year{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 .sc-year b{color:var(--ink);font-weight:600;font-size:14px}
 .bal .sub.after{color:var(--inc)} .bal .sub.after b{font-weight:600}
-.sc-nextm{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--good-soft)}
+.shiftcard{padding:0;border:0}
+.sc-nextm{padding:12px 14px;border-radius:12px;background:var(--good-soft)}
 .sc-nextm .hd{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700}
 .sc-nextm .hd b{font-size:20px;color:var(--inc);font-weight:500}
 .sc-nextm .ws{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;margin-top:2px}
@@ -512,13 +509,6 @@ async function refreshShift(){
 const md = d => `${Number(d.slice(5,7))}/${Number(d.slice(8))}`;
 const mdw = d => { const [y,m,dd] = d.split('-').map(Number); return `${m}/${dd}(${WD[new Date(y, m-1, dd).getDay()]})`; };
 const PAY_ST = {recv:['受取済','r'], earned:['振込待ち','e'], plan:['予定','p']};
-// 今日より後に入る給料（その月の末まで）
-function upcomingPay(ym = curYm()){
-  if (!S.shift || !shiftUrl()) return null;
-  const today = todayStr();
-  const list = (S.shift.paydays || []).filter(p => ymOf(p.date) === ym && p.date > today && !items(ym).some(t => t.id === slId(p)));
-  return {list, total: list.reduce((a,p) => a + p.amount, 0)};
-}
 // 月が変わったら、その月の給料日の見込み額を「収入（見込み）」として月初の日付で記録する。
 // 自分で金額を直した取引は上書きしない（実際に振り込まれた額に直す想定）。消した取引は作り直さない。
 const slId = p => `sl_${p.date}_${p.wp}`;
@@ -555,28 +545,17 @@ async function runShiftIncome(){
 function shiftCard(){
   if (!shiftUrl()) return '';
   const sd = S.shift;
-  if (!sd) return `<section class="card"><h2>バイト代の見込み</h2><div class="empty" style="padding:6px 0">シフトログから読み込み中…</div></section>`;
-  const ym = S.ym, today = todayStr();
-  const pays = (sd.paydays || []).filter(p => ymOf(p.date) === ym);
-  const tot = pays.reduce((a,p) => a + p.amount, 0), got = pays.filter(p => p.date <= today).reduce((a,p) => a + p.amount, 0);
-  const rows = pays.map(p => { const [l, c] = PAY_ST[p.date <= today ? 'recv' : p.state] || PAY_ST.plan;
-    return `<div class="payrow"><span class="d num">${md(p.date)}</span><span class="w"><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)}<small>${p.actual ? '明細の金額' : p.shifts + '回・' + p.hours + 'h'}</small></span><span class="a num">${yen(p.amount)}</span><span class="st ${c}">${l}</span></div>`; }).join('');
-  const next = ym === curYm() ? (sd.shifts || []).filter(x => x.date >= today).slice(0, 3) : [];
-  const nym = shiftYm(ym, 1), npays = (sd.paydays || []).filter(p => ymOf(p.date) === nym && p.amount > 0);
+  if (!sd) return '';
+  // 表示中の月の「来月入る給料（見込み）」だけを出す（今月分は収入の記録で見る）
+  const nym = shiftYm(S.ym, 1), npays = (sd.paydays || []).filter(p => ymOf(p.date) === nym && p.amount > 0);
+  if (!npays.length) return '';
   const ntot = npays.reduce((a,p) => a + p.amount, 0);
-  const autoOn = cfg().shiftlogAutoFrom && nym >= cfg().shiftlogAutoFrom;
-  const y = sd.year;
-  return `<section class="card shiftcard">
-    <div class="sectionhead"><h2>バイト代の見込み</h2><span class="note" style="margin:0">シフトログ</span></div>
-    <div class="sc-top"><div><div class="l">${ym === curYm() ? '今月' : ymLabel(ym)}入る給料</div><div class="v num">${yen(tot)}</div></div>
-      ${tot ? `<div class="sc-sub num">受取済 ${yen(got)}<br>これから ${yen(tot - got)}</div>` : ''}</div>
-    ${rows || `<div class="empty" style="padding:6px 0 2px">この月の給料日はありません</div>`}
-    ${npays.length ? `<div class="sc-nextm"><div class="hd"><span>${Number(nym.slice(5))}月入る給料（見込み）</span><b class="num">${yen(ntot)}</b></div>
-      <div class="ws">${npays.map(p => `<span><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)} <span class="num">${yen(p.amount)}</span></span>`).join('')}</div>
-      <div class="hint2">${autoOn ? `${Number(nym.slice(5))}/1 に収入として自動で記録します。振り込まれたら金額を直してください` : ''}</div></div>` : ''}
-    ${next.length ? `<div class="sc-next"><div class="l">次のシフト</div>${next.map(x => `<div class="nx"><span class="num">${mdw(x.date)}</span><span><i style="background:${esc(x.color || 'var(--accent)')}"></i>${esc(x.wp)} <span class="num">${esc(x.start)}–${esc(x.end)}</span></span><span class="num">${yen(x.amount)}</span></div>`).join('')}</div>` : ''}
-    ${y ? `<div class="sc-year num">${y.y}年の見込み <b>${yen(y.total)}</b>（受取済 ${yen(y.recv)}）</div>` : ''}
-  </section>`;
+  const autoOn = cfg().shiftlogAutoFrom && nym >= cfg().shiftlogAutoFrom && nym > curYm();
+  return `<section class="card shiftcard"><div class="sc-nextm">
+    <div class="hd"><span>${Number(nym.slice(5))}月入る給料（見込み）</span><b class="num">${yen(ntot)}</b></div>
+    <div class="ws">${npays.map(p => `<span><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)} <span class="num">${yen(p.amount)}</span></span>`).join('')}</div>
+    ${autoOn ? `<div class="hint2">${Number(nym.slice(5))}/1 に収入として自動で記録します。振り込まれたら金額を直してください</div>` : ''}
+  </div></section>`;
 }
 
 /* ---------- 固定費の自動記録 ---------- */
@@ -739,8 +718,7 @@ function balanceCard(){
   return `<section class="card"><div class="bal">
     <div><div class="l">使えるお金${b.days >= 35 ? '<span class="due">答え合わせの時期</span>' : ''}</div>
       <div class="v ${b.now < 0 ? 'neg' : ''}">${b.now < 0 ? '-' : ''}${yen(b.now)}</div>
-      <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div>
-      ${(() => { const u = upcomingPay(); return u && u.total ? `<div class="sub num after">今月の給料が入ると <b>${b.now + u.total < 0 ? '-' : ''}${yen(b.now + u.total)}</b>（+${u.total.toLocaleString('ja-JP')}）</div>` : ''; })()}</div>
+      <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div></div>
     <button class="chk" data-action="balance">答え合わせ</button></div></section>`;
 }
 function viewHome(){
