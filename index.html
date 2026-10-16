@@ -80,6 +80,25 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .bdrow .bar{display:block;grid-column:2 / 4;height:4px;margin-top:2px}
 .bdtotal{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 12px}
 .bdtotal b{font-family:var(--num);font-size:30px;font-weight:400}
+.shiftcard .sc-top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:6px}
+.shiftcard .sc-top .l{font-size:12px;color:var(--muted)}
+.shiftcard .sc-top .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2;color:var(--inc)}
+.shiftcard .sc-sub{font-size:12px;color:var(--muted);text-align:right;line-height:1.6}
+.payrow{display:grid;grid-template-columns:40px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line2);font-size:14px}
+.payrow .d{color:var(--muted);font-size:13px}
+.payrow .w{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;font-weight:700}
+.payrow .w i,.sc-next i{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;margin-right:2px}
+.payrow .w small{font-weight:400;color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis}
+.payrow .a{font-weight:600}
+.payrow .st{font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.payrow .st.r{background:var(--good-soft);color:var(--inc)} .payrow .st.e{background:var(--accent-soft);color:var(--accent)} .payrow .st.p{background:var(--surface2);color:var(--muted)}
+.sc-next{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.sc-next .l{font-size:12px;color:var(--muted);margin-bottom:4px}
+.sc-next .nx{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:8px;font-size:13.5px;padding:3px 0;align-items:center}
+.sc-next .nx > span:first-child{color:var(--muted)}
+.sc-year{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.sc-year b{color:var(--ink);font-weight:600;font-size:14px}
+.bal .sub.after{color:var(--inc)} .bal .sub.after b{font-weight:600}
 .bal{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bal .l{font-size:12px;color:var(--muted)}
 .bal .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2}
@@ -344,6 +363,7 @@ const S = {
   view:'home', ym:curYm(), year:Number(todayStr().slice(0,4)),
   reportMode:'month', listMode:'list', calDay:null, filterCat:null,
   sheet:null, confirmDel:false, confirmDisconnect:false, allCats:null,
+  shift: (() => { try { return JSON.parse(lsGet('kakeibo.shiftlog') || 'null'); } catch { return null; } })(),
 };
 
 const $app = document.getElementById('app');
@@ -454,12 +474,61 @@ async function refresh(){
     S.config = j.config || structuredClone(DEFAULT_CONFIG);
     setTransactions(j.transactions || []);
     S.offline = false; S.lastSync = new Date(); saveCache();
-    S.ready = true; rerender(); runRecurring();
+    S.ready = true; rerender(); runRecurring(); refreshShift();
   } catch (e){
     console.error(e); S.offline = true;
     if (!S.ready) $app.innerHTML = `<div class="setup"><h1>接続できませんでした</h1><p>電波の良いところで、もう一度お試しください。</p>
       <button class="btn" data-action="sync">再読み込み</button><button class="linkbtn" data-action="reconnect">接続先を設定し直す</button></div>`;
   } finally { refreshing = false; updateSync(); }
+}
+
+/* ---------- シフトログ（バイト代の見込み） ---------- */
+// シフトログアプリが共有している「給料日ごとの見込み額・これからのシフト」を読む（読み取り専用）
+const shiftUrl = () => cfg().shiftlogUrl || '';
+async function fetchShift(url = shiftUrl()){
+  if (!url) return null;
+  const r = await fetch(url);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'error');
+  return j;
+}
+let shiftLoading = false;
+async function refreshShift(){
+  if (!shiftUrl() || shiftLoading) return;
+  shiftLoading = true;
+  try { S.shift = await fetchShift(); S.shift.fetchedAt = Date.now(); lsSet('kakeibo.shiftlog', JSON.stringify(S.shift)); rerender(); }
+  catch (e){ console.error(e); }
+  finally { shiftLoading = false; }
+}
+const md = d => `${Number(d.slice(5,7))}/${Number(d.slice(8))}`;
+const mdw = d => { const [y,m,dd] = d.split('-').map(Number); return `${m}/${dd}(${WD[new Date(y, m-1, dd).getDay()]})`; };
+const PAY_ST = {recv:['受取済','r'], earned:['振込待ち','e'], plan:['予定','p']};
+// 今日より後に入る給料（その月の末まで）
+function upcomingPay(ym = curYm()){
+  if (!S.shift || !shiftUrl()) return null;
+  const today = todayStr();
+  const list = (S.shift.paydays || []).filter(p => ymOf(p.date) === ym && p.date > today);
+  return {list, total: list.reduce((a,p) => a + p.amount, 0)};
+}
+function shiftCard(){
+  if (!shiftUrl()) return '';
+  const sd = S.shift;
+  if (!sd) return `<section class="card"><h2>バイト代の見込み</h2><div class="empty" style="padding:6px 0">シフトログから読み込み中…</div></section>`;
+  const ym = S.ym, today = todayStr();
+  const pays = (sd.paydays || []).filter(p => ymOf(p.date) === ym);
+  const tot = pays.reduce((a,p) => a + p.amount, 0), got = pays.filter(p => p.date <= today).reduce((a,p) => a + p.amount, 0);
+  const rows = pays.map(p => { const [l, c] = PAY_ST[p.date <= today ? 'recv' : p.state] || PAY_ST.plan;
+    return `<div class="payrow"><span class="d num">${md(p.date)}</span><span class="w"><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)}<small>${p.actual ? '明細の金額' : p.shifts + '回・' + p.hours + 'h'}</small></span><span class="a num">${yen(p.amount)}</span><span class="st ${c}">${l}</span></div>`; }).join('');
+  const next = ym === curYm() ? (sd.shifts || []).filter(x => x.date >= today).slice(0, 3) : [];
+  const y = sd.year;
+  return `<section class="card shiftcard">
+    <div class="sectionhead"><h2>バイト代の見込み</h2><span class="note" style="margin:0">シフトログ</span></div>
+    <div class="sc-top"><div><div class="l">${ym === curYm() ? '今月' : ymLabel(ym)}入る給料</div><div class="v num">${yen(tot)}</div></div>
+      ${tot ? `<div class="sc-sub num">受取済 ${yen(got)}<br>これから ${yen(tot - got)}</div>` : ''}</div>
+    ${rows || `<div class="empty" style="padding:6px 0 2px">この月の給料日はありません</div>`}
+    ${next.length ? `<div class="sc-next"><div class="l">次のシフト</div>${next.map(x => `<div class="nx"><span class="num">${mdw(x.date)}</span><span><i style="background:${esc(x.color || 'var(--accent)')}"></i>${esc(x.wp)} <span class="num">${esc(x.start)}–${esc(x.end)}</span></span><span class="num">${yen(x.amount)}</span></div>`).join('')}</div>` : ''}
+    ${y ? `<div class="sc-year num">${y.y}年の見込み <b>${yen(y.total)}</b>（受取済 ${yen(y.recv)}）</div>` : ''}
+  </section>`;
 }
 
 /* ---------- 固定費の自動記録 ---------- */
@@ -622,7 +691,8 @@ function balanceCard(){
   return `<section class="card"><div class="bal">
     <div><div class="l">使えるお金${b.days >= 35 ? '<span class="due">答え合わせの時期</span>' : ''}</div>
       <div class="v ${b.now < 0 ? 'neg' : ''}">${b.now < 0 ? '-' : ''}${yen(b.now)}</div>
-      <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div></div>
+      <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div>
+      ${(() => { const u = upcomingPay(); return u && u.total ? `<div class="sub num after">今月の給料が入ると <b>${b.now + u.total < 0 ? '-' : ''}${yen(b.now + u.total)}</b>（+${u.total.toLocaleString('ja-JP')}）</div>` : ''; })()}</div>
     <button class="chk" data-action="balance">答え合わせ</button></div></section>`;
 }
 function viewHome(){
@@ -645,6 +715,7 @@ function viewHome(){
       ${pp.list.length && s.exp ? `<div class="vs">支出は${pp.partial ? '先月の同じ時期' : '先月'}より <b class="num" style="font-weight:500;color:${dexp > 0 ? 'var(--exp)' : 'var(--accent)'}">${dexp > 0 ? yen(dexp) + ' 多い' : dexp < 0 ? yen(dexp) + ' 少ない' : '同じ'}</b></div>` : ''}
     </section>
     ${balanceCard()}
+    ${shiftCard()}
     <section class="card"><h2>何に使った？</h2>${donut(expCats, s.exp, '支出合計', true, 'home')}</section>
     ${budgetCard}
     ${goalCard()}
@@ -811,6 +882,10 @@ function viewSettings(){
       <button class="addbtn" data-action="newcat" data-type="expense">＋ カテゴリを追加</button></section>
     <section class="card"><h2>収入のカテゴリ</h2>${activeCats('income').map(row).join('')}
       <button class="addbtn" data-action="newcat" data-type="income">＋ カテゴリを追加</button></section>
+    <section class="card"><h2>シフトログと連携</h2>
+      <button class="setrow first" data-action="editshift" style="grid-template-columns:1fr auto 16px">
+        <span><div>バイト代の見込みを表示</div><div class="sub">${shiftUrl() ? (S.shift?.fetchedAt ? '最終読み込み ' + new Date(S.shift.fetchedAt).toLocaleString('ja-JP', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) : 'つながっています') : 'シフトログの 設定 → 家計簿アプリと連携 の URL を貼ります'}</div></span>
+        <span class="num">${shiftUrl() ? 'オン' : '未設定'}</span>${ICON.chev}</button></section>
     <section class="card"><h2>データ</h2>
       <p class="note" style="margin:0 0 4px">Googleスプレッドシート「家計簿データ」に保存しています。${S.lastSync ? `最終同期 ${S.lastSync.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'})}` : ''}${queue.length ? `・未送信 ${queue.length}件` : ''}</p>
       <button class="linkbtn" data-action="sync">今すぐ同期する</button>
@@ -879,6 +954,12 @@ function renderSheet(focus){
       ${sh.type === 'expense' ? `<div class="field"><span class="lbl">種類</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">${Object.entries(GROUPS).map(([k,l]) => `<button data-action="sgroup" data-v="${k}" aria-pressed="${sh.group === k}">${l}</button>`).join('')}</div></div>` + amountField('c-budget', '毎月の予算（空欄なら予算なし）', sh.budget) : ''}
       <div class="err">${esc(sh.err)}</div>` + actions(sh.isNew, 'delcat', 'savecat') +
       (sh.isNew ? '' : `<p class="note" style="margin-top:12px">削除しても、これまでの記録はそのまま残ります（新しく選べなくなるだけです）。</p>`);
+  } else if (sh.kind === 'shiftlog'){
+    html = head('シフトログと連携') +
+      `<p class="note" style="margin:0 0 10px">シフトログアプリの <b>設定 → 家計簿アプリと連携</b> で「コピー」した URL を貼り付けてください。ホームに、給料日ごとのバイト代の見込みとこれからのシフトが出ます。</p>
+      <div class="field"><label for="s-url">共有用URL</label><input id="s-url" class="textin" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec?share=…" value="${esc(sh.url)}"></div>
+      <div class="err">${esc(sh.err)}</div>
+      <div class="actions">${shiftUrl() ? `<button class="btn ghost" data-action="offshift">連携をやめる</button>` : ''}<button class="btn" data-action="saveshift">${sh.busy ? '確認中…' : '保存する'}</button></div>`;
   } else if (sh.kind === 'total'){
     html = head('毎月の予算（全体）') + amountField('t-budget', '支出の合計予算（空欄なら予算なし）', sh.budget) + `<div class="actions"><button class="btn" data-action="savetotal">保存する</button></div>`;
   } else if (sh.kind === 'rec'){
@@ -956,6 +1037,7 @@ function syncSheetInputs(){
   if (sh.kind === 'tx'){ sh.amount = digits(v('#f-amount')); sh.date = v('#f-date') || sh.date; sh.memo = v('#f-memo') ?? sh.memo; }
   if (sh.kind === 'cat'){ sh.name = v('#c-name') ?? sh.name; if (sh.type === 'expense') sh.budget = digits(v('#c-budget')); }
   if (sh.kind === 'total'){ sh.budget = digits(v('#t-budget')); }
+  if (sh.kind === 'shiftlog'){ sh.url = (v('#s-url') ?? sh.url).trim(); }
   if (sh.kind === 'rec'){ sh.name = v('#r-name') ?? sh.name; sh.amount = digits(v('#r-amount')); sh.day = Number(v('#r-day')) || sh.day; }
   if (sh.kind === 'goal'){ sh.name = v('#g-name') ?? sh.name; sh.target = digits(v('#g-target')); sh.saved = digits(v('#g-saved')); sh.deadline = v('#g-deadline') ?? sh.deadline; }
   if (sh.kind === 'deposit'){ sh.amount = digits(v('#d-amount')); }
@@ -1053,6 +1135,15 @@ document.addEventListener('click', async e => {
       const list = cats().map(c => c.id === sh.id ? {...c, archived:true, budget:0} : {...c});
       closeSheet(); await saveConfig({...cfg(), categories:list}); render(); toast('削除しました'); break;
     }
+    case 'editshift': openSheet({kind:'shiftlog', url: shiftUrl()}); break;
+    case 'saveshift': {
+      if (!/^https:\/\/script\.google(usercontent)?\.com\/.*[?&]share=/.test(sh.url)) return fail('シフトログでコピーした「…?share=…」で終わる URL を貼ってください');
+      sh.busy = true; renderSheet();
+      try { S.shift = await fetchShift(sh.url); S.shift.fetchedAt = Date.now(); lsSet('kakeibo.shiftlog', JSON.stringify(S.shift)); }
+      catch (err){ sh.busy = false; return fail('読み込めませんでした（' + err.message + '）。シフトログの Apps Script が最新か確認してください'); }
+      closeSheet(); await saveConfig({...cfg(), shiftlogUrl: sh.url}); render(); toast('シフトログとつながりました'); break;
+    }
+    case 'offshift': { const c = {...cfg()}; delete c.shiftlogUrl; S.shift = null; lsSet('kakeibo.shiftlog', null); closeSheet(); await saveConfig(c); render(); toast('連携をやめました'); break; }
     case 'edittotal': openSheet({kind:'total', budget: cfg().totalBudget ? String(cfg().totalBudget) : ''}); break;
     case 'savetotal': { const v = Number(sh.budget) || 0; closeSheet(); await saveConfig({...cfg(), totalBudget:v}); render(); toast('保存しました'); break; }
     case 'newrec': openRec(null); break;
