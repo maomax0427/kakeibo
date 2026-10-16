@@ -101,8 +101,13 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .sc-nextm .hd b{font-size:20px;color:var(--inc);font-weight:500}
 .sc-nextm .ws{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;margin-top:2px}
 .sc-nextm .ws i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.sc-why{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(0,0,0,.12);font-size:12.5px;font-weight:700;color:var(--ink)}
+.sc-why small{font-weight:400;color:var(--muted);font-size:11.5px}
 .sc-nextm .hint2{font-size:11.5px;color:var(--muted);margin-top:4px}
 .sc-nextm .hint2:empty{display:none}
+.bal .split2{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:12.5px;color:var(--muted);margin-top:2px}
+.bal .split2 b{color:var(--ink);font-weight:600}
+.bal .split2 b.neg{color:var(--exp)}
 .bal{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bal .l{font-size:12px;color:var(--muted)}
 .bal .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2}
@@ -554,6 +559,8 @@ function shiftCard(){
   return `<section class="card shiftcard"><div class="sc-nextm">
     <div class="hd"><span>${Number(nym.slice(5))}月入る給料（見込み）</span><b class="num">${yen(ntot)}</b></div>
     <div class="ws">${npays.map(p => `<span><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)} <span class="num">${yen(p.amount)}</span></span>`).join('')}</div>
+    ${(() => { const seen = {}, ns = npays.flatMap(p => p.notes || []).filter(n => !seen[n.t + n.s] && (seen[n.t + n.s] = 1));
+      return ns.length ? `<div class="sc-why">${ns.map(n => `<span>${n.kind === 'exam' ? '📝' : '✈️'} ${esc(n.t)} <span class="num">${md(n.s)}${n.e !== n.s ? '〜' + md(n.e) : ''}</span></span>`).join('')}<small>の分、シフトが少なめです</small></div>` : ''; })()}
     ${autoOn ? `<div class="hint2">${Number(nym.slice(5))}/1 に収入として自動で記録します。振り込まれたら金額を直してください</div>` : ''}
   </div></section>`;
 }
@@ -716,8 +723,10 @@ function balanceCard(){
   if (!b) return `<section class="card"><div class="bal"><div><div class="l">使えるお金</div><div class="sub">口座・PayPay・現金の残高を一度入れると、あとは記録から自動で計算します</div></div><button class="chk" data-action="balance">設定する</button></div></section>`;
   const [, m, d] = b.anchorDate.split('-');
   return `<section class="card"><div class="bal">
-    <div><div class="l">使えるお金${b.days >= 35 ? '<span class="due">答え合わせの時期</span>' : ''}</div>
+    <div><div class="l">全部のお金（Net worth）${b.days >= 35 ? '<span class="due">答え合わせの時期</span>' : ''}</div>
       <div class="v ${b.now < 0 ? 'neg' : ''}">${b.now < 0 ? '-' : ''}${yen(b.now)}</div>
+      ${(() => { const saved = goals().reduce((a,g) => a + (Number(g.saved) || 0), 0), free = b.now - saved;
+        return saved ? `<div class="split2 num"><span>うち積み立て <b>${yen(saved)}</b></span><span>自由に使える <b class="${free < 0 ? 'neg' : ''}">${free < 0 ? '-' : ''}${yen(free)}</b></span></div>` : ''; })()}
       <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div></div>
     <button class="chk" data-action="balance">答え合わせ</button></div></section>`;
 }
