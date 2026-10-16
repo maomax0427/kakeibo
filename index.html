@@ -99,6 +99,13 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .sc-year{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 .sc-year b{color:var(--ink);font-weight:600;font-size:14px}
 .bal .sub.after{color:var(--inc)} .bal .sub.after b{font-weight:600}
+.sc-nextm{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--good-soft)}
+.sc-nextm .hd{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700}
+.sc-nextm .hd b{font-size:20px;color:var(--inc);font-weight:500}
+.sc-nextm .ws{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;margin-top:2px}
+.sc-nextm .ws i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.sc-nextm .hint2{font-size:11.5px;color:var(--muted);margin-top:4px}
+.sc-nextm .hint2:empty{display:none}
 .bal{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bal .l{font-size:12px;color:var(--muted)}
 .bal .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2}
@@ -456,7 +463,9 @@ function commit(op){ applyOp(op); queue.push(op); saveQueue(); saveCache(); flus
 async function saveConfig(next){ commit({action:'saveConfig', config:next}); }
 async function saveTx(tx){ commit({action:'upsert', txs:[tx]}); }
 async function deleteTx(tx){
-  if (tx.recurringId){
+  if (tx.recurringId === 'shiftlog'){
+    commit({action:'saveConfig', config:{...cfg(), skipShiftlog:[...new Set([...(cfg().skipShiftlog || []), tx.id])]}});
+  } else if (tx.recurringId){
     const ym = ymOf(tx.date); const skip = {...(cfg().skipRecurring || {})};
     skip[ym] = [...new Set([...(skip[ym] || []), tx.recurringId])];
     commit({action:'saveConfig', config:{...cfg(), skipRecurring:skip}});
@@ -496,7 +505,7 @@ let shiftLoading = false;
 async function refreshShift(){
   if (!shiftUrl() || shiftLoading) return;
   shiftLoading = true;
-  try { S.shift = await fetchShift(); S.shift.fetchedAt = Date.now(); lsSet('kakeibo.shiftlog', JSON.stringify(S.shift)); rerender(); }
+  try { S.shift = await fetchShift(); S.shift.fetchedAt = Date.now(); lsSet('kakeibo.shiftlog', JSON.stringify(S.shift)); rerender(); runShiftIncome(); }
   catch (e){ console.error(e); }
   finally { shiftLoading = false; }
 }
@@ -507,8 +516,41 @@ const PAY_ST = {recv:['受取済','r'], earned:['振込待ち','e'], plan:['予�
 function upcomingPay(ym = curYm()){
   if (!S.shift || !shiftUrl()) return null;
   const today = todayStr();
-  const list = (S.shift.paydays || []).filter(p => ymOf(p.date) === ym && p.date > today);
+  const list = (S.shift.paydays || []).filter(p => ymOf(p.date) === ym && p.date > today && !items(ym).some(t => t.id === slId(p)));
   return {list, total: list.reduce((a,p) => a + p.amount, 0)};
+}
+// 月が変わったら、その月の給料日の見込み額を「収入（見込み）」として月初の日付で記録する。
+// 自分で金額を直した取引は上書きしない（実際に振り込まれた額に直す想定）。消した取引は作り直さない。
+const slId = p => `sl_${p.date}_${p.wp}`;
+let shiftIncomeRunning = false;
+async function runShiftIncome(){
+  if (shiftIncomeRunning || !S.ready || !S.shift || !shiftUrl()) return;
+  const ym = curYm();
+  // すでにつないでいた場合は、来月から自動記録を始める（今月はもう手で記録しているため）
+  if (!cfg().shiftlogAutoFrom){ commit({action:'saveConfig', config:{...cfg(), shiftlogAutoFrom: shiftYm(ym, 1)}}); rerender(); return; }
+  if (ym < cfg().shiftlogAutoFrom) return;
+  shiftIncomeRunning = true;
+  try {
+    const auto = {...(cfg().shiftlogAuto || {})}, skip = cfg().skipShiftlog || [];
+    const catId = cats().some(c => c.id === 'salary') ? 'salary' : (activeCats('income')[0] || {}).id;
+    const txs = []; let added = 0;
+    for (const p of (S.shift.paydays || []).filter(p => ymOf(p.date) === ym && p.amount > 0)){
+      const id = slId(p);
+      if (skip.includes(id)) continue;
+      const cur = items(ym).find(t => t.id === id);
+      if (!cur){ txs.push({id, date:`${ym}-01`, type:'income', amount:p.amount, categoryId:catId, memo:`${p.wp}（見込み）`, recurringId:'shiftlog', createdAt:Date.now()}); added++; }
+      else if (cur.amount === auto[id] && cur.amount !== p.amount) txs.push({...cur, amount:p.amount});   // 手で直していなければ最新の見込みに合わせる
+      else if (cur.amount !== auto[id]) continue;
+      auto[id] = p.amount;
+    }
+    if (txs.length){
+      commit({action:'upsert', txs});
+      commit({action:'saveConfig', config:{...cfg(), shiftlogAuto:auto}});
+      render();
+      if (added) toast(`今月のバイト代（見込み）を収入として${added}件記録しました`);
+    }
+  } catch (e){ console.error(e); }
+  finally { shiftIncomeRunning = false; }
 }
 function shiftCard(){
   if (!shiftUrl()) return '';
@@ -520,12 +562,18 @@ function shiftCard(){
   const rows = pays.map(p => { const [l, c] = PAY_ST[p.date <= today ? 'recv' : p.state] || PAY_ST.plan;
     return `<div class="payrow"><span class="d num">${md(p.date)}</span><span class="w"><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)}<small>${p.actual ? '明細の金額' : p.shifts + '回・' + p.hours + 'h'}</small></span><span class="a num">${yen(p.amount)}</span><span class="st ${c}">${l}</span></div>`; }).join('');
   const next = ym === curYm() ? (sd.shifts || []).filter(x => x.date >= today).slice(0, 3) : [];
+  const nym = shiftYm(ym, 1), npays = (sd.paydays || []).filter(p => ymOf(p.date) === nym && p.amount > 0);
+  const ntot = npays.reduce((a,p) => a + p.amount, 0);
+  const autoOn = cfg().shiftlogAutoFrom && nym >= cfg().shiftlogAutoFrom;
   const y = sd.year;
   return `<section class="card shiftcard">
     <div class="sectionhead"><h2>バイト代の見込み</h2><span class="note" style="margin:0">シフトログ</span></div>
     <div class="sc-top"><div><div class="l">${ym === curYm() ? '今月' : ymLabel(ym)}入る給料</div><div class="v num">${yen(tot)}</div></div>
       ${tot ? `<div class="sc-sub num">受取済 ${yen(got)}<br>これから ${yen(tot - got)}</div>` : ''}</div>
     ${rows || `<div class="empty" style="padding:6px 0 2px">この月の給料日はありません</div>`}
+    ${npays.length ? `<div class="sc-nextm"><div class="hd"><span>${Number(nym.slice(5))}月入る給料（見込み）</span><b class="num">${yen(ntot)}</b></div>
+      <div class="ws">${npays.map(p => `<span><i style="background:${esc(p.color || 'var(--accent)')}"></i>${esc(p.wp)} <span class="num">${yen(p.amount)}</span></span>`).join('')}</div>
+      <div class="hint2">${autoOn ? `${Number(nym.slice(5))}/1 に収入として自動で記録します。振り込まれたら金額を直してください` : ''}</div></div>` : ''}
     ${next.length ? `<div class="sc-next"><div class="l">次のシフト</div>${next.map(x => `<div class="nx"><span class="num">${mdw(x.date)}</span><span><i style="background:${esc(x.color || 'var(--accent)')}"></i>${esc(x.wp)} <span class="num">${esc(x.start)}–${esc(x.end)}</span></span><span class="num">${yen(x.amount)}</span></div>`).join('')}</div>` : ''}
     ${y ? `<div class="sc-year num">${y.y}年の見込み <b>${yen(y.total)}</b>（受取済 ${yen(y.recv)}）</div>` : ''}
   </section>`;
@@ -656,7 +704,7 @@ function txRow(t){
   const c = cat(t.categoryId); const [,m,d] = t.date.split('-');
   return `<button class="tx" data-action="edit" data-id="${esc(t.id)}" data-ym="${ymOf(t.date)}">
     <span class="d">${m}.${d}</span>
-    <span class="main"><span class="c"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${t.recurringId ? '<span class="auto">自動</span>' : ''}</span>${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</span>
+    <span class="main"><span class="c"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${t.recurringId ? `<span class="auto">${t.recurringId === 'shiftlog' ? 'シフトログ' : '自動'}</span>` : ''}</span>${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</span>
     <span class="a num ${t.type === 'income' ? 'pos' : 'neg'}">${t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('ja-JP')}</span>
   </button>`;
 }
@@ -1141,7 +1189,7 @@ document.addEventListener('click', async e => {
       sh.busy = true; renderSheet();
       try { S.shift = await fetchShift(sh.url); S.shift.fetchedAt = Date.now(); lsSet('kakeibo.shiftlog', JSON.stringify(S.shift)); }
       catch (err){ sh.busy = false; return fail('読み込めませんでした（' + err.message + '）。シフトログの Apps Script が最新か確認してください'); }
-      closeSheet(); await saveConfig({...cfg(), shiftlogUrl: sh.url}); render(); toast('シフトログとつながりました'); break;
+      closeSheet(); await saveConfig({...cfg(), shiftlogUrl: sh.url, shiftlogAutoFrom: cfg().shiftlogAutoFrom || shiftYm(curYm(), 1)}); render(); toast('シフトログとつながりました'); break;
     }
     case 'offshift': { const c = {...cfg()}; delete c.shiftlogUrl; S.shift = null; lsSet('kakeibo.shiftlog', null); closeSheet(); await saveConfig(c); render(); toast('連携をやめました'); break; }
     case 'edittotal': openSheet({kind:'total', budget: cfg().totalBudget ? String(cfg().totalBudget) : ''}); break;
