@@ -80,6 +80,16 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .bdrow .bar{display:block;grid-column:2 / 4;height:4px;margin-top:2px}
 .bdtotal{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 12px}
 .bdtotal b{font-family:var(--num);font-size:30px;font-weight:400}
+.bal{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bal .l{font-size:12px;color:var(--muted)}
+.bal .v{font-family:var(--num);font-size:30px;font-weight:400;line-height:1.2}
+.bal .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.bal .chk{flex:none;border:1.5px solid var(--accent);color:var(--accent);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700}
+.bal .due{display:inline-block;font-size:11px;font-weight:700;color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:1px 6px;margin-left:6px}
+.calc{background:var(--surface2);border-radius:12px;padding:12px 14px;margin-top:16px;font-size:13.5px}
+.calc div{display:flex;justify-content:space-between;padding:3px 0}
+.calc div b{font-family:var(--num);font-weight:500}
+.calc .tot{border-top:1px solid var(--line);margin-top:4px;padding-top:7px;font-weight:700}
 .bdsec{font-size:12px;color:var(--muted);font-weight:500;margin:18px 2px 4px;letter-spacing:.04em}
 .split .l{font-size:12px;color:var(--muted)}
 .split .v{display:block;font-family:var(--num);font-size:24px;font-weight:400;line-height:1.3;letter-spacing:-.01em}
@@ -358,6 +368,14 @@ function summary(list){
   }
   return {inc, exp, bal:inc-exp, byCat, byGroup};
 }
+/* ---------- 使えるお金 ---------- */
+function balanceInfo(){
+  const b = cfg().balance; if (!b) return null;
+  const after = t => t.date > b.anchorDate || (t.date === b.anchorDate && (t.createdAt || 0) > (b.anchorAt || 0));
+  let inc = 0, exp = 0;
+  for (const m of Object.values(S.months)) for (const t of (m.items || [])) if (after(t)) { if (t.type === 'income') inc += t.amount; else exp += t.amount; }
+  return {...b, inc, exp, now: b.amount + inc - exp, days: Math.floor((Date.now() - (b.anchorAt || 0)) / 86400000)};
+}
 const sortTx = list => [...list].sort((a,b) => b.date.localeCompare(a.date) || (b.createdAt||0) - (a.createdAt||0));
 /* 今月を見ているときは「先月の同じ日まで」と比べる */
 function prevPeriod(ym){
@@ -597,6 +615,16 @@ function goalCard(){
 }
 
 /* ---------- views ---------- */
+function balanceCard(){
+  const b = balanceInfo();
+  if (!b) return `<section class="card"><div class="bal"><div><div class="l">使えるお金</div><div class="sub">口座・PayPay・現金の残高を一度入れると、あとは記録から自動で計算します</div></div><button class="chk" data-action="balance">設定する</button></div></section>`;
+  const [, m, d] = b.anchorDate.split('-');
+  return `<section class="card"><div class="bal">
+    <div><div class="l">使えるお金${b.days >= 35 ? '<span class="due">答え合わせの時期</span>' : ''}</div>
+      <div class="v ${b.now < 0 ? 'neg' : ''}">${b.now < 0 ? '-' : ''}${yen(b.now)}</div>
+      <div class="sub num">${Number(m)}/${Number(d)}に確認してから 収入 +${b.inc.toLocaleString('ja-JP')}・支出 -${b.exp.toLocaleString('ja-JP')}</div></div>
+    <button class="chk" data-action="balance">答え合わせ</button></div></section>`;
+}
 function viewHome(){
   const list = items(S.ym); const s = summary(list);
   const budgeted = activeCats('expense').filter(c => c.budget > 0);
@@ -616,6 +644,7 @@ function viewHome(){
       <div class="split"><button data-action="breakdown" data-type="income"><span class="l">収入<i>内訳 ›</i></span><span class="v pos">${yen(s.inc)}</span></button><button data-action="breakdown" data-type="expense"><span class="l">支出<i>内訳 ›</i></span><span class="v neg">${yen(s.exp)}</span></button></div>
       ${pp.list.length && s.exp ? `<div class="vs">支出は${pp.partial ? '先月の同じ時期' : '先月'}より <b class="num" style="font-weight:500;color:${dexp > 0 ? 'var(--exp)' : 'var(--accent)'}">${dexp > 0 ? yen(dexp) + ' 多い' : dexp < 0 ? yen(dexp) + ' 少ない' : '同じ'}</b></div>` : ''}
     </section>
+    ${balanceCard()}
     <section class="card"><h2>何に使った？</h2>${donut(expCats, s.exp, '支出合計', true, 'home')}</section>
     ${budgetCard}
     ${goalCard()}
@@ -868,6 +897,24 @@ function renderSheet(focus){
       `<div class="field"><label for="g-deadline">いつまでに（任意）</label><input id="g-deadline" class="textin" type="month" value="${esc(sh.deadline)}"></div>` +
       amountField('g-saved', 'いま貯まっている金額', sh.saved) +
       `<div class="err">${esc(sh.err)}</div>` + actions(sh.isNew, 'delgoal', 'savegoal');
+  } else if (sh.kind === 'balance'){
+    const b = balanceInfo();
+    const actual = (Number(sh.bank)||0) - (Number(sh.card)||0) + (Number(sh.paypay)||0) + (Number(sh.cash)||0);
+    const diff = b ? actual - b.now : 0;
+    html = head(b ? '答え合わせ' : '使えるお金を設定') +
+      `<p class="note" style="margin:0">今の実際の残高を入れてください。カードで使ったけれど、まだ口座から引き落とされていない分は差し引きます。</p>` +
+      amountField('b-bank', '預金残高（Olive）', sh.bank) +
+      amountField('b-card', 'まだ引き落とされていないカード利用額', sh.card) +
+      amountField('b-paypay', 'PayPay残高', sh.paypay) +
+      amountField('b-cash', '現金', sh.cash) +
+      `<div class="calc">
+        <div><span>実際の使えるお金</span><b>${actual < 0 ? '-' : ''}${yen(actual)}</b></div>
+        ${b ? `<div><span>アプリの計算</span><b>${b.now < 0 ? '-' : ''}${yen(b.now)}</b></div>
+        <div class="tot"><span>${diff === 0 ? 'ぴったり合っています' : diff < 0 ? '記録より少ない（記録漏れの支出がありそう）' : '記録より多い（記録漏れの収入がありそう）'}</span><b class="${diff < 0 ? 'neg' : diff > 0 ? 'pos' : ''}">${diff === 0 ? '±0' : signed(diff)}</b></div>` : ''}
+      </div>
+      <p class="note">保存すると、今日の金額を起点にして、ここから先の収入・支出で計算し直します。</p>` +
+      `<div class="err">${esc(sh.err)}</div><div class="actions"><button class="btn" data-action="savebalance">保存する</button></div>` +
+      (b && (b.checks || []).length ? `<div class="bdsec">これまでの答え合わせ</div><div>${[...b.checks].reverse().slice(0, 6).map(c => `<div class="bdrow" style="grid-template-columns:1fr auto auto;cursor:default"><span class="num">${c.date.slice(5).replace('-','/')}</span><span class="num">${yen(c.actual)}</span><span class="num ${c.diff < 0 ? 'neg' : c.diff > 0 ? 'pos' : ''}" style="min-width:72px;text-align:right">${c.diff == null ? '初回' : c.diff === 0 ? '±0' : signed(c.diff)}</span></div>`).join('')}</div>` : '');
   } else if (sh.kind === 'breakdown'){
     const isInc = sh.type === 'income';
     const list = sortTx(items(sh.ym).filter(t => t.type === sh.type));
@@ -912,6 +959,7 @@ function syncSheetInputs(){
   if (sh.kind === 'rec'){ sh.name = v('#r-name') ?? sh.name; sh.amount = digits(v('#r-amount')); sh.day = Number(v('#r-day')) || sh.day; }
   if (sh.kind === 'goal'){ sh.name = v('#g-name') ?? sh.name; sh.target = digits(v('#g-target')); sh.saved = digits(v('#g-saved')); sh.deadline = v('#g-deadline') ?? sh.deadline; }
   if (sh.kind === 'deposit'){ sh.amount = digits(v('#d-amount')); }
+  if (sh.kind === 'balance'){ sh.bank = digits(v('#b-bank')); sh.card = digits(v('#b-card')); sh.paypay = digits(v('#b-paypay')); sh.cash = digits(v('#b-cash')); }
 }
 
 /* ---------- events ---------- */
@@ -919,6 +967,7 @@ document.addEventListener('input', e => {
   if (e.target.matches('.amount input')){
     const raw = digits(e.target.value).slice(0,9);
     e.target.value = raw ? Number(raw).toLocaleString('ja-JP') : '';
+    if (S.sheet?.kind === 'balance'){ const id = e.target.id; syncSheetInputs(); renderSheet(); const el = document.getElementById(id); if (el){ el.focus(); const n = el.value.length; el.setSelectionRange?.(n, n); } }
   }
 });
 document.addEventListener('change', e => {
@@ -1042,6 +1091,17 @@ document.addEventListener('click', async e => {
     }
     case 'deposit': openSheet({kind:'deposit', id: el.dataset.id, amount:''}); break;
     case 'breakdown': openSheet({kind:'breakdown', type: el.dataset.type, ym: S.ym}); break;
+    case 'balance': { const p = cfg().balance?.parts || {}; openSheet({kind:'balance', isNew:false, bank: String(p.bank || ''), card: String(p.card || ''), paypay: String(p.paypay || ''), cash: String(p.cash || '')}); break; }
+    case 'savebalance': {
+      if (!sh.bank) return fail('預金残高を入力してください');
+      const parts = {bank: Number(sh.bank)||0, card: Number(sh.card)||0, paypay: Number(sh.paypay)||0, cash: Number(sh.cash)||0};
+      const actual = parts.bank - parts.card + parts.paypay + parts.cash;
+      const prev = balanceInfo();
+      const checks = [...(prev?.checks || []), {date: todayStr(), actual, computed: prev ? prev.now : null, diff: prev ? actual - prev.now : null}].slice(-24);
+      closeSheet();
+      await saveConfig({...cfg(), balance: {anchorDate: todayStr(), anchorAt: Date.now(), amount: actual, parts, checks}});
+      render(); toast(prev ? (actual === prev.now ? 'ぴったりでした' : `差額 ${signed(actual - prev.now)} を調整しました`) : '使えるお金を設定しました'); break;
+    }
     case 'bdcat': closeSheet(); S.filterCat = el.dataset.id; S.view = 'list'; S.listMode = 'list'; render(); window.scrollTo(0,0); break;
     case 'fillbal': sh.amount = String(summary(items(curYm())).bal); renderSheet(); break;
     case 'savedeposit': {
