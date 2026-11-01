@@ -134,7 +134,7 @@ const SKIP_WORDS_ = ['支払い', '支払', '完了', '残高', 'PayPay', 'ペ�
 
 function parsePayText_(text, today) {
   const raw = String(text || '').replace(/\r/g, '');
-  const norm = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[，]/g, ',').replace(/[￥]/g, '¥');
+  const norm = raw.replace(/[\uFF10-\uFF19]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[\uFF0C]/g, ',').replace(/[\uFFE5]/g, '¥');
   const lines = norm.split('\n').map(s => s.trim()).filter(Boolean);
 
   // 金額: 「¥1,234」「1,234円」。ポイント・残高の行は除き、支払い金額らしい行を優先する
