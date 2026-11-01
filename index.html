@@ -690,7 +690,7 @@ function txRow(t){
   const c = cat(t.categoryId); const [,m,d] = t.date.split('-');
   return `<button class="tx" data-action="edit" data-id="${esc(t.id)}" data-ym="${ymOf(t.date)}">
     <span class="d">${m}.${d}</span>
-    <span class="main"><span class="c"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${t.recurringId ? `<span class="auto">${t.recurringId === 'shiftlog' ? 'シフトログ' : '自動'}</span>` : ''}</span>${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</span>
+    <span class="main"><span class="c"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${t.recurringId ? `<span class="auto">${t.recurringId === 'shiftlog' ? 'シフトログ' : '自動'}</span>` : String(t.id).startsWith('qa_') ? '<span class="auto">共有</span>' : ''}</span>${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</span>
     <span class="a num ${t.type === 'income' ? 'pos' : 'neg'}">${t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString('ja-JP')}</span>
   </button>`;
 }
