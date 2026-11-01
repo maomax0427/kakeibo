@@ -197,6 +197,7 @@ function guessCategory_(shop, config, txs) {
 
 function quickAdd_(req) {
   const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  if (/取引日/.test(String(req.text || '').slice(0, 500)) && /取引(番号|先)/.test(String(req.text || '').slice(0, 500))) return importPayPayCsv_(String(req.text));
   const p = parsePayText_(req.text, today);
   if (!p.amount) return {ok: false, message: '金額を読み取れませんでした。支払い金額が写っている画面で、もう一度お試しください。'};
   const data = load_();
@@ -220,4 +221,65 @@ function quickAdd_(req) {
   const md = `${Number(p.date.slice(5, 7))}/${Number(p.date.slice(8))}`;
   return {ok: true, id, ...p, categoryId,
     message: `${dup ? '（記録済みを更新）' : '記録しました'}\n${md} ${memo} ¥${p.amount.toLocaleString('ja-JP')}（${cat ? cat.name : '未分類'}）`};
+}
+
+
+/* ---------- PayPayの取引履歴CSVをまとめて取り込む ----------
+ * PayPayアプリ「取引履歴 → 取引履歴のダウンロード」で作ったCSVをそのまま受け取る。
+ * 列：取引日, 出金金額（円）, 入金金額（円）, …, 取引内容, 取引先, 取引方法, …, 取引番号
+ * ・支払い／送る → 支出、受け取り → 収入（おこづかい等）、チャージ・ポイント・返金などは対象外
+ * ・取引番号でIDを作るので、同じCSVを何度共有しても二重にならない
+ * ・手入力した記録（同じ日±1日・同じ金額）があれば、二重にしない
+ * ・config.paypayFrom より前の取引は取り込まない（それ以前は手入力していたため）
+ */
+function importPayPayCsv_(text) {
+  const rows = Utilities.parseCsv(text.replace(/^﻿/, ''));
+  const hi = rows.findIndex(r => r.some(c => String(c).trim() === '取引日'));
+  if (hi < 0) return {ok: false, message: 'PayPayの取引履歴CSVとして読み取れませんでした。'};
+  const head = rows[hi].map(c => String(c).trim());
+  const col = name => head.findIndex(h => h.indexOf(name) === 0);
+  const C = {date: col('取引日'), out: col('出金金額'), inc: col('入金金額'), kind: col('取引内容'), shop: col('取引先'), method: col('取引方法'), no: col('取引番号')};
+  const data = load_();
+  const config = data.config || {categories: []};
+  let cfgChanged = false;
+  if (!(config.categories || []).some(c => c.id === 'uncat')) {
+    config.categories = [...(config.categories || []), {id: 'uncat', name: '未分類', type: 'expense', group: 'variable', color: '#78909C', budget: 0}];
+    cfgChanged = true;
+  }
+  if (!config.paypayFrom) { config.paypayFrom = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-01'); cfgChanged = true; }
+  if (cfgChanged) cfgSheet_().getRange('A2').setValue(JSON.stringify(config));
+
+  const existing = data.transactions;
+  const ids = new Set(existing.map(t => t.id));
+  const near = (a, b) => Math.abs(new Date(a) - new Date(b)) <= 86400000;
+  const incomeCat = (config.categories.find(c => c.id === 'allowance') || config.categories.find(c => c.type === 'income') || {}).id;
+  const adds = [], skipped = {dup: 0, old: 0, other: 0};
+  for (const r of rows.slice(hi + 1)) {
+    if (!r[C.date]) continue;
+    const m = String(r[C.date]).match(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if (!m) continue;
+    const date = `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+    const out = Number(String(r[C.out] || '').replace(/[^\d]/g, '')) || 0;
+    const inc = Number(String(r[C.inc] || '').replace(/[^\d]/g, '')) || 0;
+    const kind = String(r[C.kind] || ''); const shop = String(r[C.shop] || '').trim();
+    let type = null;
+    if (out > 0 && /支払|送る|送金|出金/.test(kind) && !/チャージ|返金/.test(kind)) type = 'expense';
+    else if (inc > 0 && /受け取|受取/.test(kind)) type = 'income';
+    if (!type) { skipped.other++; continue; }
+    if (date < config.paypayFrom) { skipped.old++; continue; }
+    const amount = type === 'expense' ? out : inc;
+    const id = 'pp_' + String(r[C.no] || [date, amount, shop].join('_')).replace(/[^\w-]/g, '');
+    if (ids.has(id)) { skipped.dup++; continue; }
+    if (existing.some(t => t.type === type && Number(t.amount) === amount && near(t.date, date) && !String(t.id).startsWith('pp_'))) { skipped.dup++; continue; }
+    const memo = type === 'expense' && /送る|送金/.test(kind) ? `送金：${shop}` : (shop || 'PayPay');
+    const categoryId = type === 'income' ? incomeCat : guessCategory_(shop, config, existing.concat(adds));
+    const t = {id, date, type, amount, categoryId, memo, createdAt: Date.now() + adds.length};
+    adds.push(t); ids.add(id);
+  }
+  if (adds.length) upsert_(adds);
+  const catName = id => (config.categories.find(c => c.id === id) || {}).name || '未分類';
+  const lines = adds.slice(0, 8).map(t => `${Number(t.date.slice(5, 7))}/${Number(t.date.slice(8))} ${t.memo} ${t.type === 'income' ? '+' : ''}¥${t.amount.toLocaleString('ja-JP')}（${catName(t.categoryId)}）`);
+  const notes = [skipped.dup && `記録済み${skipped.dup}件`, skipped.old && `${config.paypayFrom.slice(5).replace('-', '/')}より前${skipped.old}件`, skipped.other && `チャージ等${skipped.other}件`].filter(Boolean).join('・');
+  return {ok: true, added: adds.length, skipped,
+    message: `PayPay ${adds.length}件を記録しました${notes ? `（${notes}は対象外）` : ''}` + (lines.length ? '\n' + lines.join('\n') + (adds.length > lines.length ? `\nほか${adds.length - lines.length}件` : '') : '')};
 }
