@@ -147,6 +147,7 @@ function parsePayText_(text, today) {
       const ctx = ln + ' ' + (lines[i - 1] || '');
       let score = 0;
       if (/残高|ポイント|獲得|付与|還元|P\b|上限|あと/.test(ctx)) score -= 5;
+      if (/回|以上|以下|まで|ステップ|^\s*\//.test(ln)) score -= 5; // 「支払い回数(200円以上)」「/ 100,000円」など
       if (/支払|お支払い|合計|金額|決済/.test(ctx)) score += 3;
       if (/^[-−]?\s*(¥\s*)?[\d,]+\s*円?$/.test(ln.replace(/\s/g, ''))) score += 2; // 金額だけの大きな行
       cands.push({v, score, i});
