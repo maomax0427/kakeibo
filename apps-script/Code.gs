@@ -178,22 +178,47 @@ function parsePayText_(text, today) {
 }
 function pad2_(n) { return String(n).padStart(2, '0'); }
 
+// お店の名前から、今あるカテゴリのうち一番合うものを選ぶ
+// 1) 同じお店を前に記録していれば、最後に付けた（直した）カテゴリ  2) 店名の辞書  3) 店名の言葉づかい（〜屋・cafe など）
+function shopKey_(s) {
+  let k = String(s || '').normalize('NFKC').toLowerCase().replace(/[\s・･\-ー－]+/g, ' ').trim();
+  const cut = k.replace(/\s*[^\s]{1,10}(店|支店|号店|営業所)$/, '').trim();   // 「すき家 渋谷店」→「すき家」
+  if (cut.length >= 2) k = cut;
+  return k.replace(/\s/g, '');
+}
+const CATEGORY_RULES_ = [
+  // [カテゴリid, カテゴリ名の候補, 店名のパターン]
+  ['rentacar', ['レンタカー'], /レンタカー|レンタリース|rent ?a ?car|タイムズカー|ニッポンレンタ|オリックスレンタ|トヨタレンタ|日産レンタ|スカイレンタ|ニコニコレンタ/i],
+  ['parking', ['駐車場代', '駐車場'], /パーキング|駐車|parking|タイムズ|times|リパーク|名鉄協商|コインパ|npc|アキッパ|akippa/i],
+  ['conbini', ['コンビニ'], /セブン|7-?eleven|seven|ファミリーマート|ファミマ|familymart|ローソン|lawson|ミニストップ|ministop|デイリーヤマザキ|ニューデイズ|newdays|セイコーマート|ポプラ|コンビニ|購買|生協|自販機|自動販売機|ドラッグ|マツモトキヨシ|マツキヨ|ウエルシア|ツルハ|サンドラッグ|ココカラ|コスモス|ダイソー|daiso|セリア|キャンドゥ|ドン.?キホーテ|ドンキ|無印|ロフト|loft|東急ハンズ|ハンズ/i],
+  ['medical', ['医療費', '医療'], /薬局|調剤|病院|クリニック|医院|歯科|眼科|皮膚科|内科|整骨|接骨|整体|鍼灸|診療/i],
+  ['hotel', ['宿泊', 'ホテル'], /ホテル|hotel|旅館|inn\b|hostel|ホステル|民宿|ゲストハウス|東横イン|アパホテル|ルートイン|ドーミーイン|リッチモンド|airbnb|agoda|booking\.com/i],
+  ['travel', ['旅行', '交通'], /\bjal\b|\bana\b|航空|airline|airways|peach|ジェットスター|スカイマーク|新幹線|\bjr\b|えきねっと|スマートex|高速バス|空港|airport|じゃらん|楽天トラベル|一休|トラベル|ネクスコ|nexco|サービスエリア|パーキングエリア/i],
+  ['subsc', ['サブスク'], /netflix|spotify|\bapple\b|icloud|google|youtube|amazon ?prime|prime video|disney|hulu|u-?next|dazn|abema|\bline\b|claude|anthropic|openai|chatgpt|notion|adobe/i],
+  ['fun', ['娯楽', '趣味'], /カラオケ|ビッグエコー|まねきねこ|ジャンカラ|映画|シネマ|cinema|toho|イオンシネマ|109シネマ|ボウリング|ラウンドワン|round ?1|ゲーム|game|ゲーセン|タイトー|セガ|namco|ナムコ|^スパ(?!ゲ)|スパ$|健康ランド|温泉|銭湯|サウナ|の湯|湯$|釣|フィッシング|上州屋|ゴルフ|golf|ジム|gym|美術館|博物館|水族館|動物園|遊園地|ディズニー|usj|チケット|ticket|ライブ|コンサート|書店|本屋|ブックス|books|ブックオフ|蔦屋|tsutaya|紀伊國屋|ヨドバシ|ビック|ヤマダ|ケーズ|ノジマ|steam|playstation|nintendo|任天堂|ユニクロ|uniqlo|gu\b|zara|h&m|しまむら|古着|花屋|フラワー/i],
+  ['food', ['食費', '食事', '外食'], /マクドナルド|マック|mcdonald|モス|ケンタッキー|kfc|バーガー|burger|スタバ|スターバックス|starbucks|ドトール|doutor|タリーズ|tully|コメダ|サンマルク|エクセルシオール|ゴンチャ|gong ?cha|ティー|tea|吉野家|すき家|松屋|なか卯|ラーメン|らーめん|拉麺|中華|餃子|飯店|寿司|すし|鮨|スシロー|くら寿司|はま寿司|かっぱ寿司|サイゼ|ガスト|デニーズ|ジョナサン|バーミヤン|ココス|びっくりドンキー|丸亀|はなまる|日高屋|幸楽苑|天下一品|花月|一蘭|一風堂|家系|町田商店|山岡家|カレー|coco壱|ココイチ|うどん|そば|蕎麦|定食|食堂|弁当|おにぎり|焼肉|焼き鳥|焼鳥|鳥貴族|居酒屋|酒場|串|とんかつ|かつ|天丼|てんや|牛丼|丼|ピザ|pizza|パスタ|イタリアン|フレンチ|ビストロ|bistro|ダイニング|dining|キッチン|kitchen|グリル|grill|レストラン|restaurant|カフェ|cafe|café|coffee|珈琲|コーヒー|喫茶|パン屋|ベーカリー|ブーランジェリー|bakery|ケーキ|スイーツ|クレープ|ドーナツ|ミスド|団子|和菓子|アイス|サーティワン|ウーバー|uber ?eats|出前館|menu|wolt|スーパー|イオン|aeon|西友|ライフ|マルエツ|イトーヨーカドー|ヨーカドー|成城石井|オーケー|業務スーパー|まいばすけっと|サミット|オオゼキ|ベルク|ヤオコー|コストコ|costco|肉|魚|青果|八百屋|市場|フードコート|屋台|フェス|屋$|亭|庵|軒|楼|苑|家$|bar\b|バル|酒/i],
+];
 function guessCategory_(shop, config, txs) {
   const cats = (config && config.categories) || [];
   const exp = cats.filter(c => c.type === 'expense' && !c.archived);
+  const has = id => exp.some(c => c.id === id);
   if (shop) {
-    const same = txs.filter(t => t.type === 'expense' && t.memo && (t.memo === shop || shop.includes(t.memo) || t.memo.includes(shop)))
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-    if (same && exp.some(c => c.id === same.categoryId)) return same.categoryId;
+    const key = shopKey_(shop);
+    if (key.length >= 2) {
+      const same = (txs || []).filter(t => t.type === 'expense' && t.memo && t.categoryId !== 'uncat' && has(t.categoryId) && (() => {
+        const m = shopKey_(t.memo);
+        return m.length >= 2 && (m === key || (m.length >= 3 && key.includes(m)) || (key.length >= 3 && m.includes(key)));
+      })()).sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))[0];
+      if (same) return same.categoryId;
+    }
+    const name = String(shop).normalize('NFKC').trim();
+    for (const [id, names, re] of CATEGORY_RULES_) {
+      if (!re.test(name)) continue;
+      const c = exp.find(c => c.id === id) || exp.find(c => names.includes(c.name));
+      if (c) return c.id;
+    }
   }
-  const rules = [
-    ['conbini', /セブン|ファミリーマート|ファミマ|ローソン|ミニストップ|デイリー|ニューデイズ|NewDays|コンビニ/i],
-    ['food', /マクドナルド|マック|スタバ|スターバックス|吉野家|すき家|松屋|なか卯|ラーメン|らーめん|カフェ|珈琲|コーヒー|寿司|すし|バーガー|食堂|ゴンチャ|ドトール|タリーズ|サイゼ|ガスト|丸亀|日高屋|餃子|弁当|ベーカリー|パン|レストラン|居酒屋|焼肉|定食|そば|うどん|カレー/i],
-    ['parking', /パーキング|駐車|タイムズ|三井のリパーク|リパーク/i],
-    ['medical', /薬局|ドラッグ|病院|クリニック|医院|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ/i],
-  ];
-  for (const [id, re] of rules) if (re.test(shop) && exp.some(c => c.id === id)) return id;
-  return exp.some(c => c.id === 'uncat') ? 'uncat' : (exp[0] && exp[0].id);
+  return has('uncat') ? 'uncat' : (exp[0] && exp[0].id);
 }
 
 function quickAdd_(req) {
